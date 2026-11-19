@@ -1,0 +1,18 @@
+# Private runtime data - never commit
+logs/
+*.jsonl
+netwatch-config.json
+netwatch-config.json.tmp
+reputation.json
+reputation.json.tmp
+
+# Build output (publish the exe as a GitHub Release instead)
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/

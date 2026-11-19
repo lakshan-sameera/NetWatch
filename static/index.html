@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetWatch</title>
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2330;--line:#2a3240;--text:#e6edf3;--mut:#8b98a9;
+  --acc:#4cc2ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--vio:#bc8cff;--pink:#ff7ab6;
+  --mono:ui-monospace,"Cascadia Code",Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 "Segoe UI",system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;align-items:center;gap:10px 18px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+header .stats{flex:1 1 420px}
+nav{overflow-x:auto}
+.logo{font-weight:700;font-size:16px;letter-spacing:.3px}
+.logo b{color:var(--acc)}
+.stats{display:flex;gap:10px;flex-wrap:wrap}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 10px;min-width:84px}
+.stat .v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.stat .k{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px}
+.spacer{flex:1}
+.badge{padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.badge.ok{background:#12301b;color:var(--ok)} .badge.bad{background:#3b1416;color:var(--bad)} .badge.warn{background:#3a2c0c;color:var(--warn)}
+nav{display:flex;gap:2px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;color:var(--mut);padding:10px 14px;font:inherit;cursor:pointer;border-bottom:2px solid transparent}
+nav button.on{color:var(--text);border-bottom-color:var(--acc)}
+.toolbar{display:flex;gap:8px;align-items:center;padding:10px 16px;flex-wrap:wrap}
+input[type=search],select{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 10px;font:inherit}
+input[type=search]{width:340px;max-width:100%}
+label.chk{display:flex;gap:5px;align-items:center;color:var(--mut);cursor:pointer;user-select:none}
+.btn{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit}
+.btn:hover{border-color:var(--acc)} .btn.pri{background:#0f3550;border-color:#1c5b85}
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 16px 10px}
+.chip{border:1px solid var(--line);background:var(--panel2);color:var(--mut);border-radius:999px;padding:3px 10px;font-size:11.5px;cursor:pointer;user-select:none}
+.chip.on{color:var(--text);border-color:#3c4a5e;background:#223047}
+.chip i{font-style:normal;color:var(--mut);margin-left:4px}
+main{flex:1;overflow:hidden;display:flex}
+.view{flex:1;overflow:auto;padding:0 16px 16px;display:none}
+.view.on{display:block}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{position:sticky;top:0;background:var(--bg);text-align:left;color:var(--mut);font-weight:600;padding:7px 8px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;z-index:1}
+td{padding:5px 8px;border-bottom:1px solid #1d2430;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:380px}
+tr:hover td{background:#141b25}
+tr.click{cursor:pointer}
+tr.new td{animation:flash 1.6s ease-out}
+@keyframes flash{from{background:#173a24}to{background:transparent}}
+.mono{font-family:var(--mono);font-size:12px}
+.mut{color:var(--mut)}
+.pill{display:inline-block;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;background:var(--panel2);border:1px solid var(--line)}
+.p-public{color:var(--acc)} .p-private{color:var(--vio)} .p-loopback,.p-local,.p-listen{color:var(--mut)} .p-multicast{color:var(--pink)}
+.s-ESTABLISHED{color:var(--ok)} .s-LISTEN{color:var(--warn)} .s-TIME_WAIT,.s-CLOSE_WAIT,.s-FIN_WAIT1,.s-FIN_WAIT2{color:var(--mut)} .s-SYN_SENT{color:var(--bad)}
+.r-user-writable{color:var(--bad)} .r-other{color:var(--warn)} .r-system{color:var(--ok)}
+.e-open,.e-accept{color:var(--ok)} .e-close{color:var(--mut)} .e-listen{color:var(--warn)} .e-state{color:var(--acc)} .e-existing{color:var(--vio)}
+.e-dns{color:var(--acc)} .e-http{color:var(--pink)} .e-udp{color:#7ee0c3} .e-proc_start{color:#e3b341} .e-proc_stop{color:#a37f2c} .e-dll_load{color:var(--bad)} .e-finding{color:#ec835a}
+.t-DNS{color:var(--acc)} .t-HTTP{color:var(--pink)} .t-TCP{color:var(--ok)} .t-UDP{color:#7ee0c3}
+.fail{color:var(--bad)}
+.empty{padding:40px;text-align:center;color:var(--mut)}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer}
+.card:hover{border-color:var(--acc)}
+.card h3{margin:0 0 4px;font-size:14px;display:flex;gap:8px;align-items:center}
+.chain{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:6px 0;font-size:11.5px}
+.chain span.n{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+.chain span.a{color:var(--mut)}
+.dests{font-family:var(--mono);font-size:11.5px;color:var(--mut);max-height:86px;overflow:hidden}
+#drawer{position:fixed;top:0;right:0;height:100vh;width:min(920px,100vw);background:var(--panel);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .2s;display:flex;flex-direction:column;z-index:10;box-shadow:-10px 0 30px #0008}
+#drawer.on{transform:none}
+#drawer .hd{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+#drawer .hd h2{margin:0;font-size:17px}
+#drawer .bd{overflow-y:auto;overflow-x:hidden;padding:14px 18px;flex:1}
+#drawer table{table-layout:fixed}
+#drawer td{max-width:none}
+#mods th:nth-child(1){width:20%} #mods th:nth-child(2){width:34%} #mods th:nth-child(3){width:11%} #mods th:nth-child(4){width:17%} #mods th:nth-child(5){width:8%} #mods th:nth-child(6){width:10%}
+.sec{margin-bottom:18px}
+.sec h4{margin:0 0 8px;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.7px;display:flex;gap:8px;align-items:center}
+.sec h4 *{text-transform:none;letter-spacing:0}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:4px 12px;font-size:12.5px}
+.kv div:nth-child(odd){color:var(--mut)}
+.kv div{word-break:break-all}
+.tree{font-family:var(--mono);font-size:12px}
+.tree .row{padding:3px 0;display:flex;gap:6px;align-items:baseline}
+.tree .row.cur{color:var(--acc);font-weight:600}
+.tree a{color:inherit;cursor:pointer;text-decoration:none} .tree a:hover{text-decoration:underline}
+.x{background:none;border:0;color:var(--mut);font-size:22px;cursor:pointer;margin-left:auto}
+.foot{padding:6px 16px;border-top:1px solid var(--line);background:var(--panel);color:var(--mut);font-size:11px;display:flex;gap:16px}
+.legend span{margin-right:10px}
+.scroll{max-height:240px;overflow:auto}
+/* dashboard */
+:root{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--crit:#d03b3b;--serious:#ec835a;--warning:#fab219;--good:#0ca30c}
+.dhead{display:flex;align-items:center;gap:12px;margin:2px 0 12px}
+.dhead h3{margin:0;font-size:15px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{background:var(--panel2);border:0;color:var(--mut);padding:5px 11px;cursor:pointer;font:inherit;font-size:12px}
+.seg button.on{background:#223047;color:var(--text)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi .v{font-size:24px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.2}
+.kpi .k{font-size:11px;color:var(--mut)}
+.kpi .s{font-size:11px;color:var(--mut);margin-top:2px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;min-width:0}
+.ph{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:13px}
+.ph .legend{margin-left:auto;display:flex;gap:12px;font-size:11.5px;color:var(--mut)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.grid2 .panel,.grid3 .panel{margin-bottom:0}
+.hbar{display:grid;grid-template-columns:minmax(0,1fr) 60px;gap:2px 10px;align-items:center;font-size:12px;padding:3px 0;cursor:default}
+.hbar .lab{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbar .val{text-align:right;color:var(--mut);font-variant-numeric:tabular-nums}
+.hbar .track{grid-column:1/3;height:6px;background:#1f2733;border-radius:3px;overflow:hidden}
+.hbar .fill{height:100%;background:var(--s1);border-radius:3px}
+.hbar:hover .lab{color:var(--acc)}
+#tip{position:fixed;pointer-events:none;background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;z-index:20;display:none;min-width:150px;box-shadow:0 6px 20px #0009}
+#tip .r{display:flex;justify-content:space-between;gap:14px}
+.sev{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;text-transform:uppercase;padding:1px 7px;border-radius:4px;border:1px solid}
+.sev-critical{color:var(--crit);border-color:#6b2222;background:#2a1213}
+.sev-high{color:var(--serious);border-color:#6b3a24;background:#2a1a12}
+.sev-medium{color:var(--warning);border-color:#5e4512;background:#2a210c}
+.sev-low{color:#9fb0c3;border-color:#33404f;background:#1a222c}
+.sev-info{color:var(--mut);border-color:var(--line);background:var(--panel2)}
+.sig{font-size:11px;font-weight:600;padding:1px 7px;border-radius:4px;border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
+.sig-signed,.sig-store-pkg{color:var(--good)} .sig-unsigned,.sig-untrusted{color:var(--serious)} .sig-tampered{color:var(--crit);border-color:#6b2222}
+.sig-pending{color:var(--mut)} .sig-missing,.sig-n\/a,.sig-error{color:var(--mut)}
+.frow{padding:7px 0;border-bottom:1px solid #1d2430;cursor:pointer}
+.frow:last-child{border-bottom:0}
+.frow .t{font-size:12.5px;margin-top:3px}
+.frow .d{font-size:11.5px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+a.vt{color:var(--acc);text-decoration:none} a.vt:hover{text-decoration:underline}
+.ok-msg{color:var(--good)}
+.rep{display:inline-block;font-size:10.5px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid var(--line);white-space:nowrap;margin-left:4px;vertical-align:1px}
+.rep-clean{color:#7fbf8a;border-color:#24402b} .rep-suspicious{color:var(--warning);border-color:#5e4512;background:#2a210c}
+.rep-malicious{color:#ff6b6b;border-color:#6b2222;background:#2a1213} .rep-error,.rep-unchecked{color:var(--mut)}
+.modal{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;z-index:30;padding:16px}
+.modal.on{display:flex}
+.mbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(620px,100%);max-height:90vh;overflow:auto;box-shadow:0 20px 60px #000a}
+.mbox .hd{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)} .mbox .hd h2{margin:0;font-size:16px}
+.mbox .bd{padding:14px 18px} .mbox label{display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600}
+.mbox input[type=password]{width:100%;margin-top:6px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:8px 10px;font:inherit}
+.small{font-size:11.5px;margin-top:4px}
+.repcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.repcard .kv{grid-template-columns:150px 1fr}
+.sbar{display:inline-block;width:60px;height:6px;background:#1f2733;border-radius:3px;vertical-align:middle;margin-right:6px;overflow:hidden}
+.sbar i{display:block;height:100%;border-radius:3px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Net<b>Watch</b></div>
+  <div class="stats">
+    <div class="stat"><div class="v" id="sRemote">–</div><div class="k">Remote conns</div></div>
+    <div class="stat"><div class="v" id="sProcs">–</div><div class="k">Processes</div></div>
+    <div class="stat"><div class="v" id="sRate">–</div><div class="k">Conns / min</div></div>
+    <div class="stat"><div class="v" id="sDns">–</div><div class="k">DNS queries</div></div>
+    <div class="stat"><div class="v" id="sHttp">–</div><div class="k">URLs seen</div></div>
+  </div>
+  <div class="spacer"></div>
+  <span id="etwBadge" class="badge" title=""></span>
+  <span id="admin" class="badge"></span>
+  <button class="btn" id="setBtn" title="API keys for AbuseIPDB / VirusTotal">⚙ Settings</button>
+  <button class="btn" id="pauseBtn">Pause</button>
+</header>
+<nav>
+  <button data-v="dash" class="on">Dashboard</button>
+  <button data-v="findings">Findings <span id="nFind" class="pill" style="display:none"></span></button>
+  <button data-v="web">Web requests</button>
+  <button data-v="files">Files &amp; signatures</button>
+  <button data-v="rep">Reputation <span id="nRep" class="pill" style="display:none"></span></button>
+  <button data-v="conns">Live connections</button>
+  <button data-v="procs">By process</button>
+  <button data-v="events">Event log</button>
+  <button data-v="logs">Log files</button>
+</nav>
+<div class="toolbar">
+  <input type="search" id="q" placeholder="Filter: process, domain, URL, IP, port, parent, path…">
+  <select id="scope">
+    <option value="remote">Remote only</option>
+    <option value="public">Public internet only</option>
+    <option value="all">All sockets (incl. listen/UDP)</option>
+    <option value="listen">Listening only</option>
+  </select>
+  <label class="chk"><input type="checkbox" id="hideLoop" checked> Hide loopback</label>
+  <span class="spacer"></span>
+  <span class="legend mut"><span class="r-system">● system path</span><span class="r-other">● other path</span><span class="r-user-writable">● user-writable path</span></span>
+</div>
+<div class="chips" id="chips" style="display:none"></div>
+<main>
+  <section class="view on" id="v-dash">
+    <div class="dhead"><h3>Network activity</h3><div class="seg" id="range"><button data-m="15">15m</button><button data-m="60" class="on">1h</button><button data-m="360">6h</button><button data-m="1440">24h</button></div><span class="mut" id="dashNote"></span></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="panel"><div class="ph"><b>Requests over time</b><span class="mut" id="bucketNote"></span><span class="legend" id="chartLegend"></span></div><div id="chart"></div></div>
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="panel"><div class="ph"><b>Top domains</b><span class="mut">DNS lookups + connections</span></div><div id="topDom"></div></div>
+      <div class="panel"><div class="ph"><b>Top processes</b></div><div id="topProc" style="overflow-x:auto"></div></div>
+    </div>
+    <div class="grid3">
+      <div class="panel"><div class="ph"><b>Findings</b><a href="#" class="vt" style="margin-left:auto" onclick="goView('findings');return false">view all →</a></div><div id="dFind"></div></div>
+      <div class="panel"><div class="ph"><b>Services / ports</b></div><div id="svc"></div></div>
+      <div class="panel"><div class="ph"><b>Recent URLs</b><span class="mut">WinHTTP / WinINet apps</span></div><div id="dUrls"></div></div>
+    </div>
+  </section>
+  <section class="view" id="v-findings">
+    <div class="dhead"><h3>Findings</h3><select id="minSev"><option value="4">All (incl. info)</option><option value="3">Low and above</option><option value="2" selected>Medium and above</option><option value="1">High and above</option></select>
+      <span class="mut" style="font-size:12px">Rules re-run every 5 s: unsigned/tampered files, DLLs from unusual paths, scanner-like fan-out, port scans, DNS failure storms (DGA), LOLBins online, web-attack URLs.</span></div>
+    <table><thead><tr><th>Severity</th><th>Finding</th><th>Process</th><th>Details</th><th>Path</th><th>Last seen</th></tr></thead><tbody id="tFind"></tbody></table>
+  </section>
+  <section class="view" id="v-files">
+    <div class="dhead"><h3>Files &amp; signatures</h3>
+      <select id="fFilter"><option value="flagged">Flagged: unsigned or outside system folders</option><option value="unsigned">Unsigned / untrusted / tampered only</option><option value="nonsystem">Outside system folders</option><option value="net">Used by network-active processes</option><option value="all">All files seen</option></select>
+      <select id="fKind"><option value="">All kinds</option><option value="exe">Programs (.exe)</option><option value="dll">DLLs / modules</option><option value="driver">Drivers</option></select>
+      <button class="btn" id="scanBtn">Scan all running processes</button><span class="mut" id="fStat"></span></div>
+    <table><thead><tr><th>Signature</th><th>File</th><th>Kind</th><th>Location</th><th>Signer</th><th>Net</th><th>Used by</th><th>SHA-256</th><th>Path</th></tr></thead><tbody id="tFiles"></tbody></table>
+  </section>
+  <section class="view" id="v-rep">
+    <div class="dhead" style="flex-wrap:wrap">
+      <h3>Reputation</h3>
+      <input type="search" id="repQ" placeholder="IP, domain or SHA-256 to look up now" style="width:300px">
+      <button class="btn pri" id="repCheck">Check now</button>
+      <button class="btn" id="myIpBtn">Check my public IP</button>
+      <select id="repFilter"><option value="all">All checked</option><option value="bad">Malicious + suspicious</option><option value="ip">IPs</option><option value="domain">Domains</option><option value="file">File hashes</option></select>
+      <span class="mut" id="repStat" style="font-size:12px"></span>
+    </div>
+    <div id="repNotice"></div>
+    <div id="repResult"></div>
+    <table><thead><tr><th>Verdict</th><th>Type</th><th>Indicator</th><th>AbuseIPDB</th><th>VirusTotal</th><th>Owner / ISP</th><th>Country</th><th>Seen by</th><th>Open in</th><th>Checked</th></tr></thead><tbody id="tRep"></tbody></table>
+  </section>
+  <section class="view" id="v-web"><table><thead><tr>
+    <th>Time</th><th>Type</th><th>Process</th><th>PID</th><th>Parent</th><th>Request (domain / URL / host)</th><th>Answer / remote</th><th>Info</th><th>Reputation</th></tr></thead>
+    <tbody id="tWeb"></tbody></table></section>
+  <section class="view" id="v-conns"><table><thead><tr>
+    <th data-k="name">Process</th><th data-k="pid">PID</th><th data-k="parent">Parent</th><th data-k="proto">Proto</th>
+    <th data-k="host">Host</th><th data-k="remote">Remote</th><th data-k="service">Service</th><th data-k="status">State</th>
+    <th data-k="scope">Scope</th><th>Reputation</th><th data-k="local">Local</th><th data-k="age">Age</th></tr></thead><tbody id="tConns"></tbody></table></section>
+  <section class="view" id="v-procs"><div class="pgrid" id="pGrid"></div></section>
+  <section class="view" id="v-events"><table><thead><tr>
+    <th>Time</th><th>Event</th><th>Process</th><th>PID</th><th>Parent</th><th>Target</th><th>Details</th></tr></thead>
+    <tbody id="tEvents"></tbody></table></section>
+  <section class="view" id="v-logs">
+    <div style="display:flex;gap:16px;align-items:flex-start">
+      <div style="min-width:280px"><div class="sec"><h4>Saved logs (JSONL)</h4><div id="logList"></div></div>
+        <div class="mut" style="font-size:11.5px">Everything NetWatch records is appended to a daily file in <span class="mono">NetWatch\logs\</span>. Click a file to view it here (the filter box applies), or download it.</div></div>
+      <div style="flex:1;overflow:auto"><table><thead><tr><th>Time</th><th>Event</th><th>Process</th><th>PID</th><th>Parent</th><th>Target</th><th>Details</th></tr></thead><tbody id="tLog"></tbody></table></div>
+    </div>
+  </section>
+</main>
+<div class="foot"><span id="logPath"></span><span class="spacer"></span><span>Host source: <b>etw-dns</b> = this process's own DNS query · <b>dns-cache</b> = system DNS cache · <b>rdns</b> = reverse lookup</span></div>
+
+<div id="tip"></div>
+<div id="modal" class="modal" onclick="if(event.target===this)closeSettings()"><div class="mbox">
+  <div class="hd"><h2>Settings – reputation lookups</h2><button class="x" onclick="closeSettings()">×</button></div>
+  <div class="bd">
+    <div class="mut" style="font-size:12.5px">Your keys are stored <b>encrypted with Windows DPAPI</b> in <span class="mono">netwatch-config.json</span> next to NetWatch, so only your Windows account can read them, and the page never receives them back.
+      Only <b>public IPs, public domain names and file hashes</b> are sent. File contents and private or local addresses are never sent.</div>
+    <label>AbuseIPDB API key <span id="abState" class="sig"></span></label>
+    <input type="password" id="abKey" placeholder="paste key – leave empty to keep the current one" autocomplete="off" spellcheck="false">
+    <div class="mut small">Free key: abuseipdb.com → sign in → User Account → API. Free plan: 1,000 IP checks/day.</div>
+    <label>VirusTotal API key <span id="vtState" class="sig"></span></label>
+    <input type="password" id="vtKey" placeholder="paste key – leave empty to keep the current one" autocomplete="off" spellcheck="false">
+    <div class="mut small">Free key: virustotal.com → sign in → your profile → API key. Free plan: 4 lookups/min, 500/day.</div>
+    <label class="chk" style="font-weight:400;margin-top:16px"><input type="checkbox" id="autoRep"> Automatically check every public IP, domain and flagged file hash as it appears (stays within the daily budget)</label>
+    <div id="usage" class="mut small" style="margin-top:10px"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap"><button class="btn pri" id="saveSet">Save</button>
+      <button class="btn" id="clrAb">Remove AbuseIPDB key</button><button class="btn" id="clrVt">Remove VirusTotal key</button><span id="setMsg" class="mut" style="align-self:center"></span></div>
+  </div></div></div>
+<div id="drawer"><div class="hd"><h2 id="dTitle"></h2><span id="dRisk" class="pill"></span><button class="x" onclick="closeDrawer()">×</button></div><div class="bd" id="dBody"></div></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const KINDS = ['open','accept','close','udp','dns','http','proc_start','proc_stop','dll_load','finding','existing','listen','state'];
+const WEB_KINDS = new Set(['dns','http','open','udp']);
+let view = 'dash', paused = false, conns = [], events = [], lastEvent = 0, sortK = 'age', sortDir = 1, knownKeys = new Set(), lastStatus = null;
+let kindOn = new Set(KINDS), curPid = null, curModules = [];
+
+function goView(v) {
+  view = v;
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.v === v));
+  document.querySelectorAll('.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + v));
+  $('#chips').style.display = v === 'events' ? 'flex' : 'none';
+  $('#scope').style.display = (v === 'conns' || v === 'procs') ? '' : 'none';
+  document.querySelector('.toolbar').style.display = v === 'dash' ? 'none' : '';
+  if (v === 'logs') loadLogList();
+  lastSlow = 0; render(); slowRefresh();
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => goView(b.dataset.v));
+$('#scope').style.display = 'none';
+document.querySelector('.toolbar').style.display = 'none';
+
+/* ---------- dashboard / findings / files ---------- */
+let dashMin = 60, lastSlow = 0, dashData = null;
+document.querySelectorAll('#range button').forEach(b => b.onclick = () => {
+  dashMin = +b.dataset.m; document.querySelectorAll('#range button').forEach(x => x.classList.toggle('on', x === b)); lastSlow = 0; slowRefresh();
+});
+$('#minSev').onchange = () => { lastSlow = 0; slowRefresh(); };
+$('#fFilter').onchange = $('#fKind').onchange = () => { lastSlow = 0; slowRefresh(); };
+const post = (url, body) => fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-NetWatch': '1'}, body: JSON.stringify(body || {})}).then(r => r.json());
+$('#scanBtn').onclick = async () => { await post('/api/scan'); $('#scanBtn').textContent = 'Scanning…'; setTimeout(() => $('#scanBtn').textContent = 'Scan all running processes', 6000); };
+const SER = [['dns','DNS lookups','--s1'],['tcp','TCP connections','--s2'],['udp','UDP / QUIC flows','--s3'],['http','HTTP URLs','--s4']];
+const fmtN = n => n >= 10000 ? (n/1000).toFixed(1)+'k' : n.toLocaleString();
+const tip = $('#tip');
+function showTip(ev, html) { tip.innerHTML = html; tip.style.display = 'block'; const r = tip.getBoundingClientRect();
+  let x = ev.clientX + 14, y = ev.clientY + 14; if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - 14; if (y + r.height > innerHeight - 8) y = ev.clientY - r.height - 14;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px'; }
+function hideTip() { tip.style.display = 'none'; }
+const sevBadge = s => `<span class="sev sev-${s}">${s === 'critical' ? '⛔' : s === 'high' ? '▲' : s === 'medium' ? '◆' : '●'} ${s}</span>`;
+const sigBadge = (c, title='') => `<span class="sig sig-${esc(c)}" title="${esc(title)}">${c === 'signed' ? '✓ signed' : c === 'pending' ? '… checking' : c === 'tampered' ? '✗ TAMPERED' : c === 'unsigned' ? '✗ unsigned' : esc(c)}</span>`;
+
+async function slowRefresh() {
+  if (paused || Date.now() - lastSlow < 4000) return;
+  lastSlow = Date.now();
+  try {
+    if (view === 'dash') { dashData = await fetch('/api/dashboard?minutes=' + dashMin).then(r => r.json()); renderDash(); }
+    else if (view === 'findings') renderFindings(await fetch('/api/findings').then(r => r.json()));
+    else if (view === 'files') renderFiles(await fetch('/api/files?filter=' + $('#fFilter').value).then(r => r.json()));
+    else if (view === 'rep') renderRep(await fetch('/api/reputation').then(r => r.json()));
+    repMap = await fetch('/api/reputation/map').then(r => r.json());
+    const bad = Object.values(repMap).filter(r => r.v === 'malicious' || r.v === 'suspicious').length;
+    $('#nRep').style.display = bad ? '' : 'none'; $('#nRep').textContent = bad; $('#nRep').className = 'pill sev-high';
+    const f = await fetch('/api/findings').then(r => r.json());
+    const hi = f.filter(x => x.severity === 'critical' || x.severity === 'high').length;
+    $('#nFind').style.display = hi ? '' : 'none'; $('#nFind').textContent = hi; $('#nFind').className = 'pill sev-high';
+  } catch (e) {}
+}
+function renderDash() {
+  const d = dashData, k = d.kpi, fh = (k.findings.critical || 0) + (k.findings.high || 0);
+  $('#dashNote').textContent = d.etw ? '' : 'ETW off – DNS/URL data needs Administrator';
+  const kp = [
+    ['Requests', fmtN(k.requests), `last ${d.minutes >= 60 ? d.minutes/60 + 'h' : d.minutes + 'm'}`],
+    ['Unique domains', fmtN(k.domains), 'looked up or contacted'],
+    ['Public IPs', fmtN(k.ips), 'distinct remote addresses'],
+    ['DNS failures', fmtN(k.dns_fail), 'NXDOMAIN / errors'],
+    ['Processes online', k.processes, 'made a request'],
+    ['Unsigned files', k.unsigned, `of ${fmtN(k.files)} files checked`, k.unsigned ? 'var(--serious)' : ''],
+    ['High findings', fh, fh ? 'review the Findings tab' : 'nothing high or critical', fh ? 'var(--crit)' : 'var(--good)'],
+  ];
+  $('#kpis').innerHTML = kp.map(([l, v, s, c]) => `<div class="kpi"><div class="k">${l}</div><div class="v" ${c ? `style="color:${c}"` : ''}>${v}</div><div class="s">${s}</div></div>`).join('');
+  $('#chartLegend').innerHTML = SER.map(([, n, c]) => `<span><span class="sw" style="background:var(${c})"></span>${n}</span>`).join('');
+  $('#bucketNote').textContent = `per ${d.bucket >= 60 ? d.bucket/60 + ' min' : d.bucket + ' s'}`;
+  drawChart(d);
+  const md = Math.max(1, ...d.top_domains.map(x => x.n));
+  $('#topDom').innerHTML = d.top_domains.map(x => `<div class="hbar" data-t="${esc(x.host)}<br><span class='mut'>${esc(x.procs.join(', '))}</span>"><span class="lab">${esc(x.host)}${repBadge(x.host)}</span><span class="val">${fmtN(x.n)}</span><div class="track"><div class="fill" style="width:${x.n/md*100}%"></div></div></div>`).join('') || '<div class="mut">No domain activity yet.</div>';
+  $('#topProc').innerHTML = d.top_procs.length ? `<table><thead><tr><th>Process</th><th>Requests</th><th>Domains</th><th>Public IPs</th><th>DNS fails</th><th>Signature</th></tr></thead><tbody>${d.top_procs.map(p => `<tr class="click" onclick="openProc(${p.pid})"><td class="r-${p.risk}" title="${esc(p.exe)}"><b>${esc(p.name)}</b></td><td>${fmtN(p.n)}</td><td>${p.domains}</td><td>${p.ips}</td><td class="${p.nx > 10 ? 'fail' : 'mut'}">${p.nx}</td><td>${sigBadge(p.sig, p.signer)}</td></tr>`).join('')}</tbody></table>` : '<div class="mut">No requests yet.</div>';
+  const ms = Math.max(1, ...d.services.map(x => x[1]));
+  $('#svc').innerHTML = d.services.map(([s, n]) => `<div class="hbar"><span class="lab">${esc(s)}</span><span class="val">${fmtN(n)}</span><div class="track"><div class="fill" style="width:${n/ms*100}%"></div></div></div>`).join('') || '<div class="mut">—</div>';
+  $('#dUrls').innerHTML = d.urls.map(u => `<div class="frow" onclick="openProc(${u.pid})"><div class="d">${esc(u.time.split('T')[1])} · ${esc(u.process)} · ${esc(u.detail)}</div><div class="t mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(u.url)}">${esc(u.url)}</div></div>`).join('') || '<div class="mut">No URLs captured in this range. Browsers encrypt their own traffic, so only apps using Windows HTTP stacks appear here.</div>';
+  $('#dFind').innerHTML = d.findings.map(f => `<div class="frow" onclick="${f.pid ? `openProc(${f.pid})` : ''}"><div>${sevBadge(f.severity)} <span class="mut" style="font-size:11px">${esc(f.rule)}</span></div><div class="t">${esc(f.title)}</div><div class="d" title="${esc(f.detail)}">${esc(f.detail)}</div></div>`).join('') || '<div class="ok-msg">✓ No findings – nothing suspicious detected so far.</div>';
+  document.querySelectorAll('#topDom .hbar').forEach(el => { el.onmousemove = e => showTip(e, el.dataset.t); el.onmouseleave = hideTip; });
+}
+function drawChart(d) {
+  const el = $('#chart'), W = Math.max(320, el.clientWidth), H = 220, L = 40, R = 8, T = 10, B = 24;
+  const n = d.series.dns.length, tot = Array.from({length: n}, (_, i) => SER.reduce((a, [k]) => a + d.series[k][i], 0));
+  const max = Math.max(4, ...tot), step = Math.pow(10, Math.floor(Math.log10(max / 4))), tick = [1, 2, 5, 10].map(m => m * step).find(t => max / t <= 5);
+  const top = Math.ceil(max / tick) * tick, y = v => T + (H - T - B) * (1 - v / top), bw = (W - L - R) / n, gap = bw > 6 ? 2 : 1;
+  let s = `<svg width="${W}" height="${H}" style="display:block">`;
+  for (let v = 0; v <= top; v += tick) s += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="#232b37" stroke-width="1"/><text x="${L - 6}" y="${y(v) + 4}" fill="#8b98a9" font-size="10.5" text-anchor="end">${fmtN(v)}</text>`;
+  const every = Math.ceil(n / Math.max(2, Math.floor((W - L) / 70)));
+  for (let i = 0; i < n; i++) {
+    const x = L + i * bw; let acc = 0;
+    SER.forEach(([k, , c], si) => { const v = d.series[k][i]; if (!v) return; const y0 = y(acc), y1 = y(acc + v); acc += v;
+      const h = Math.max(1, y0 - y1 - (acc < tot[i] ? 0 : 0)); s += `<rect x="${x + gap / 2}" y="${y1}" width="${Math.max(1, bw - gap)}" height="${Math.max(1, h - 1)}" rx="${bw > 8 ? 2 : 0}" fill="var(${c})"/>`; });
+    if (i % every === 0) { const t = new Date((d.start + i * d.bucket) * 1000); s += `<text x="${x + bw / 2}" y="${H - 6}" fill="#8b98a9" font-size="10.5" text-anchor="middle">${t.toTimeString().slice(0, 5)}</text>`; }
+    s += `<rect class="hit" data-i="${i}" x="${x}" y="${T}" width="${bw}" height="${H - T - B}" fill="transparent"/>`;
+  }
+  s += `<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="#3a4554"/></svg>`;
+  el.innerHTML = s;
+  el.querySelectorAll('.hit').forEach(r => { r.onmousemove = e => { const i = +r.dataset.i, t0 = new Date((d.start + i * d.bucket) * 1000);
+    r.setAttribute('fill', '#ffffff10');
+    showTip(e, `<b>${t0.toTimeString().slice(0, 5)}</b> <span class="mut">· ${tot[i]} total</span>` + SER.map(([k, nm, c]) => `<div class="r"><span><span class="sw" style="background:var(${c})"></span>${nm}</span><b>${d.series[k][i]}</b></div>`).join('')); };
+    r.onmouseleave = () => { r.setAttribute('fill', 'transparent'); hideTip(); }; });
+}
+function renderFindings(rows) {
+  const min = +$('#minSev').value, q = $('#q').value.trim().toLowerCase(), order = {critical: 0, high: 1, medium: 2, low: 3, info: 4};
+  rows = rows.filter(f => order[f.severity] <= min && (!q || JSON.stringify(f).toLowerCase().includes(q)));
+  $('#tFind').innerHTML = rows.map(f => `<tr class="${f.pid ? 'click' : ''}" ${f.pid ? `onclick="openProc(${f.pid})"` : ''}><td>${sevBadge(f.severity)}</td><td style="white-space:normal;min-width:260px"><b>${esc(f.title)}</b><div class="mut" style="font-size:11px">${esc(f.rule)} · first ${esc(f.first.split('T')[1])}</div></td>
+    <td>${esc(f.process)}${f.pid ? ` <span class="mut mono">(${f.pid})</span>` : ''}</td><td style="white-space:normal;min-width:340px;max-width:520px">${esc(f.detail)}</td><td class="mono mut" title="${esc(f.path)}">${esc(f.path)}</td><td class="mut">${esc(f.last.split('T')[1])}</td></tr>`).join('')
+    || '<tr><td colspan="6" class="empty"><span class="ok-msg">✓ No findings at this severity.</span></td></tr>';
+}
+/* ---------- reputation ---------- */
+let repMap = {};
+function repKey(v) {
+  if (!v) return '';
+  v = String(v).toLowerCase().trim().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  let m = v.match(/^64:ff9b::([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (m) { const a = parseInt(m[1], 16), b = parseInt(m[2], 16); return [a >> 8, a & 255, b >> 8, b & 255].join('.'); }
+  m = v.match(/^(?:64:ff9b::|::ffff:)(\d+\.\d+\.\d+\.\d+)$/); if (m) return m[1];
+  return v;
+}
+const ipOf = remote => remote ? remote.replace(/:\d+$/, '').replace(/^\[|\]$/g, '') : '';
+function repBadge(val) {
+  const r = repMap[repKey(val)]; if (!r) return '';
+  const parts = [];
+  if (r.a != null) parts.push(`AIPDB ${r.a}%`);
+  if (r.vf) parts.push(`VT ${r.vm}/${r.vt}`); else if (r.vf === false && r.a == null) parts.push('VT unknown');
+  if (!parts.length) return '';
+  return `<span class="rep rep-${r.v}" title="${esc(val)} – ${r.v}${r.ar != null ? ` · ${r.ar} AbuseIPDB reports` : ''}${r.vs ? ` · ${r.vs} VT suspicious` : ''}">${r.v === 'malicious' ? '⛔ ' : r.v === 'suspicious' ? '▲ ' : ''}${parts.join(' · ')}</span>`;
+}
+const repBadges = (...vals) => [...new Set(vals.filter(Boolean).map(repKey))].map(repBadge).join('');
+const vtLink = r => `https://www.virustotal.com/gui/${{ip: 'ip-address', domain: 'domain', file: 'file'}[r.type]}/${encodeURIComponent(r.value)}`;
+const scoreBar = s => `<span class="sbar"><i style="width:${s}%;background:${s >= 50 ? 'var(--crit)' : s >= 15 ? 'var(--warning)' : 'var(--good)'}"></i></span>`;
+function repCells(r) {
+  const a = r.abuse || {}, v = r.vt || {};
+  const aCell = a.error ? `<span class="mut" title="${esc(a.error)}">error</span>` : a.score != null ? `${scoreBar(a.score)}<b>${a.score}%</b> <span class="mut">· ${a.reports} reports</span>` : (r.type === 'ip' ? (r.pending.includes('abuse') ? '<span class="mut">checking…</span>' : '<span class="mut">—</span>') : '<span class="mut">n/a</span>');
+  const vCell = v.error ? `<span class="mut" title="${esc(v.error)}">error</span>` : v.found ? `<b class="${v.malicious ? 'fail' : ''}">${v.malicious}</b> malicious · ${v.suspicious} susp. <span class="mut">/ ${v.total}</span>${v.label ? ` <span class="pill">${esc(v.label)}</span>` : ''}` : v.found === false ? '<span class="mut">not in VT</span>' : (r.pending.includes('vt') ? '<span class="mut">queued…</span>' : '<span class="mut">—</span>');
+  return [aCell, vCell];
+}
+function renderRep(d) {
+  const s = d.settings, flt = $('#repFilter').value, q = ($('#q').value || '').toLowerCase();
+  $('#repNotice').innerHTML = (!s.abuse_key_set && !s.vt_key_set) ? `<div class="repcard"><b>No API keys yet.</b> <span class="mut">Add a free AbuseIPDB and/or VirusTotal key to start scoring IPs, domains and file hashes.</span> <button class="btn pri" onclick="openSettings()">Open Settings</button></div>` : '';
+  const u = s.usage;
+  $('#repStat').innerHTML = `${fmtN(s.cached)} indicators seen · AbuseIPDB ${s.abuse_key_set ? `${u.abuse.auto + u.abuse.manual} today${u.abuse.remaining != null ? ` (${u.abuse.remaining} left)` : ''}${s.queue.abuse ? ` · ${s.queue.abuse} queued` : ''}` : 'no key'} · VirusTotal ${s.vt_key_set ? `${u.vt.auto + u.vt.manual} today${s.queue.vt ? ` · ${s.queue.vt} queued (4/min)` : ''}` : 'no key'}${s.auto ? '' : ' · auto-check OFF'}${u.abuse.last_error ? ` · <span class="fail">AbuseIPDB: ${esc(u.abuse.last_error)}</span>` : ''}${u.vt.last_error ? ` · <span class="fail">VT: ${esc(u.vt.last_error)}</span>` : ''}`;
+  const rows = d.rows.filter(r => (flt === 'all' || (flt === 'bad' ? (r.verdict === 'malicious' || r.verdict === 'suspicious') : r.type === flt)) && (!q || JSON.stringify(r).toLowerCase().includes(q)));
+  $('#tRep').innerHTML = rows.slice(0, 1500).map(r => {
+    const a = r.abuse || {}, v = r.vt || {}, [ac, vc] = repCells(r);
+    const checked = Math.max(a.checked || 0, v.checked || 0);
+    return `<tr><td><span class="rep rep-${r.verdict}" style="margin:0">${r.verdict}</span></td><td class="mut">${r.type}</td>
+      <td class="mono" title="${esc(r.value)}">${esc(r.type === 'file' ? r.value.slice(0, 16) + '…' : r.value)}${v.name ? ` <span class="mut">${esc(v.name)}</span>` : ''}</td>
+      <td>${ac}</td><td>${vc}</td><td class="mut" title="${esc(a.usage || '')}">${esc(a.isp || v.as_owner || (v.categories || []).join(', ') || '')}</td><td>${esc(a.country || v.country || '')}${a.tor ? ' <span class="pill">TOR</span>' : ''}</td>
+      <td class="mut" title="${esc(r.procs.join(', '))}">${esc(r.procs.slice(0, 3).join(', '))}</td>
+      <td>${r.type === 'ip' ? `<a class="vt" target="_blank" rel="noopener" href="https://www.abuseipdb.com/check/${encodeURIComponent(r.value)}">AbuseIPDB↗</a> ` : ''}<a class="vt" target="_blank" rel="noopener" href="${vtLink(r)}">VT↗</a></td>
+      <td class="mut">${checked ? new Date(checked * 1000).toTimeString().slice(0, 5) : ''}</td></tr>`;
+  }).join('') || `<tr><td colspan="10" class="empty">${s.abuse_key_set || s.vt_key_set ? 'Nothing checked yet – results appear as traffic is seen (VirusTotal: 4/min).' : 'Add an API key in Settings.'}</td></tr>`;
+}
+function repResultCard(r, title) {
+  if (!r || r.error) return `<div class="repcard"><span class="fail">${esc(r ? r.error : 'no result')}</span></div>`;
+  const [ac, vc] = repCells(r), a = r.abuse || {}, v = r.vt || {};
+  return `<div class="repcard"><div style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><b>${esc(title || r.value)}</b><span class="rep rep-${r.verdict}">${r.verdict}</span><span class="spacer"></span>
+    ${r.type === 'ip' ? `<a class="vt" target="_blank" rel="noopener" href="https://www.abuseipdb.com/check/${encodeURIComponent(r.value)}">Open on AbuseIPDB ↗</a>` : ''} <a class="vt" target="_blank" rel="noopener" href="${vtLink(r)}">Open on VirusTotal ↗</a></div>
+    <div class="kv"><div>AbuseIPDB</div><div>${ac}${a.last_reported ? ` <span class="mut">· last reported ${esc(a.last_reported.slice(0, 16).replace('T', ' '))}</span>` : ''}</div>
+    <div>VirusTotal</div><div>${vc}${(v.flagged_by || []).length ? `<div class="mut small">flagged by: ${esc(v.flagged_by.join(', '))}</div>` : ''}</div>
+    ${a.isp ? `<div>ISP / usage</div><div>${esc(a.isp)} · ${esc(a.usage)}${a.domain ? ' · ' + esc(a.domain) : ''}</div>` : ''}
+    ${(a.country || v.country) ? `<div>Country</div><div>${esc(a.country || v.country)}</div>` : ''}
+    ${v.as_owner ? `<div>AS owner</div><div>${esc(v.as_owner)}</div>` : ''}${(v.categories || []).length ? `<div>Categories</div><div>${esc(v.categories.join(', '))}</div>` : ''}</div></div>`;
+}
+$('#repCheck').onclick = async () => {
+  const v = $('#repQ').value.trim(); if (!v) return;
+  $('#repResult').innerHTML = '<div class="repcard mut">Checking… (VirusTotal can take up to 15 s because of the free-tier rate limit)</div>';
+  $('#repResult').innerHTML = repResultCard(await post('/api/reputation/check', {value: v}));
+  lastSlow = 0; slowRefresh();
+};
+$('#repQ').addEventListener('keydown', e => { if (e.key === 'Enter') $('#repCheck').click(); });
+$('#repFilter').onchange = () => { lastSlow = 0; slowRefresh(); };
+$('#myIpBtn').onclick = async () => {
+  $('#repResult').innerHTML = '<div class="repcard mut">Finding your public IP and checking it…</div>';
+  const d = await post('/api/myip');
+  $('#repResult').innerHTML = d.error ? repResultCard(d) : repResultCard(d.result, `Your public IP: ${d.ip}`);
+};
+/* ---------- settings ---------- */
+async function openSettings() {
+  const s = await fetch('/api/settings').then(r => r.json());
+  $('#abState').textContent = s.abuse_key_set ? '✓ saved' : 'not set'; $('#abState').className = 'sig ' + (s.abuse_key_set ? 'sig-signed' : 'sig-pending');
+  $('#vtState').textContent = s.vt_key_set ? '✓ saved' : 'not set'; $('#vtState').className = 'sig ' + (s.vt_key_set ? 'sig-signed' : 'sig-pending');
+  $('#autoRep').checked = s.auto; $('#abKey').value = ''; $('#vtKey').value = ''; $('#setMsg').textContent = '';
+  $('#usage').textContent = `Today: AbuseIPDB ${s.usage.abuse.auto} auto + ${s.usage.abuse.manual} manual (auto budget ${s.daily.abuse}/day) · VirusTotal ${s.usage.vt.auto} auto + ${s.usage.vt.manual} manual (auto budget ${s.daily.vt}/day)`;
+  $('#modal').classList.add('on');
+}
+function closeSettings() { $('#modal').classList.remove('on'); $('#abKey').value = ''; $('#vtKey').value = ''; }
+$('#setBtn').onclick = openSettings;
+$('#saveSet').onclick = async () => {
+  await post('/api/settings', {abuseipdb_key: $('#abKey').value.trim(), virustotal_key: $('#vtKey').value.trim(), auto: $('#autoRep').checked});
+  $('#abKey').value = ''; $('#vtKey').value = ''; await openSettings(); $('#setMsg').textContent = 'Saved.'; lastSlow = 0; slowRefresh();
+};
+$('#clrAb').onclick = async () => { await post('/api/settings', {clear: ['abuse']}); openSettings(); };
+$('#clrVt').onclick = async () => { await post('/api/settings', {clear: ['vt']}); openSettings(); };
+
+function renderFiles(d) {
+  const q = $('#q').value.trim().toLowerCase(), kind = $('#fKind').value;
+  const bs = d.by_sig || {};
+  $('#fStat').innerHTML = `${fmtN(d.total)} files seen · <span class="sig-signed">${bs.signed || 0} signed</span> · <span class="sig-unsigned">${(bs.unsigned || 0) + (bs.untrusted || 0)} unsigned/untrusted</span>${bs.tampered ? ` · <span class="sig-tampered">${bs.tampered} TAMPERED</span>` : ''} · ${d.nonsystem} outside system folders${d.queue ? ` · checking ${d.queue}…` : ''}`;
+  const rows = d.files.filter(f => (!kind || f.kind === kind) && (!q || (f.path + f.signer + f.procs.join(' ') + f.sha256).toLowerCase().includes(q))).slice(0, 1500);
+  $('#tFiles').innerHTML = rows.map(f => `<tr class="${f.pids.length ? 'click' : ''}" ${f.pids.length ? `onclick="openProc(${f.pids[0]})"` : ''}><td>${sigBadge(f.sig_class, f.status)}</td><td><b>${esc(f.name)}</b></td><td class="mut">${f.kind}</td><td class="r-${f.risk}">${f.risk}</td>
+    <td class="mut" title="${esc(f.signer)}">${esc(f.signer) || '—'}</td><td>${f.net ? '<span class="p-public">● net</span>' : ''}</td><td class="mut" title="${esc(f.procs.join(', '))}">${esc(f.procs.slice(0, 3).join(', '))}${f.procs.length > 3 ? ' +' + (f.procs.length - 3) : ''}</td>
+    <td class="mono">${f.sha256 && /^[0-9a-f]{64}$/.test(f.sha256) ? `<a class="vt" href="https://www.virustotal.com/gui/file/${f.sha256}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Look up this hash on VirusTotal (only the hash is sent)">${f.sha256.slice(0, 12)}… ↗</a>${repBadge(f.sha256)}` : '<span class="mut">—</span>'}</td>
+    <td class="mono mut" title="${esc(f.path)}">${esc(f.path)}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">Nothing here yet – files are added as processes run, load DLLs or use the network. Click “Scan all running processes”.</td></tr>';
+}
+document.querySelectorAll('#v-conns th').forEach(th => th.onclick = () => {
+  const k = th.dataset.k; sortDir = sortK === k ? -sortDir : 1; sortK = k; render();
+});
+['q','scope','hideLoop'].forEach(id => $('#'+id).addEventListener('input', render));
+$('#pauseBtn').onclick = () => { paused = !paused; $('#pauseBtn').textContent = paused ? 'Resume' : 'Pause'; $('#pauseBtn').classList.toggle('pri', paused); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeDrawer(); closeSettings(); } });
+
+function renderChips() {
+  const k = lastStatus?.kinds || {};
+  $('#chips').innerHTML = KINDS.map(n => `<span class="chip ${kindOn.has(n) ? 'on' : ''}" data-k="${n}"><span class="e-${n}">●</span> ${n}<i>${k[n] || 0}</i></span>`).join('');
+  $('#chips').querySelectorAll('.chip').forEach(c => c.onclick = () => { const n = c.dataset.k; kindOn.has(n) ? kindOn.delete(n) : kindOn.add(n); renderChips(); render(); });
+}
+
+function matchQ(o, q) {
+  if (!q) return true;
+  const hay = [o.name,o.process,o.pid,o.parent,o.host,o.remote,o.local,o.service,o.exe,o.proto,o.status,o.user,o.target,o.detail,o.event].join(' ').toLowerCase();
+  return q.split(/\s+/).every(t => hay.includes(t));
+}
+function filtered() {
+  const q = $('#q').value.trim().toLowerCase(), sc = $('#scope').value, hl = $('#hideLoop').checked;
+  return conns.filter(c => {
+    if (sc === 'remote' && !c.remote) return false;
+    if (sc === 'public' && c.scope !== 'public') return false;
+    if (sc === 'listen' && c.status !== 'LISTEN') return false;
+    if (hl && c.scope === 'loopback') return false;
+    return matchQ(c, q);
+  });
+}
+const hostCell = c => c.host ? `<span title="${esc(c.host_src)}">${esc(c.host)}</span>` : (c.remote_ip ? `<span class="mut">${c.host_src === 'pending' ? 'resolving…' : '—'}</span>` : '');
+const age = s => s < 60 ? s.toFixed(0)+'s' : s < 3600 ? (s/60).toFixed(0)+'m' : (s/3600).toFixed(1)+'h';
+const tm = e => esc((e.time || '').split('T')[1] || e.time);
+
+function render() {
+  if (view === 'conns') renderConns();
+  else if (view === 'procs') renderProcs();
+  else if (view === 'events') renderEvents();
+  else if (view === 'web') renderWeb();
+}
+function renderConns() {
+  const rows = filtered().sort((a,b) => {
+    let x = a[sortK], y = b[sortK];
+    if (typeof x === 'number') return (x - y) * sortDir;
+    return String(x ?? '').localeCompare(String(y ?? '')) * sortDir;
+  });
+  $('#tConns').innerHTML = rows.length ? rows.map(c => `<tr class="click ${c._new ? 'new':''}" onclick="openProc(${c.pid})">
+    <td class="r-${c.risk}" title="${esc(c.exe)}"><b>${esc(c.name)}</b></td><td class="mono">${c.pid}</td>
+    <td class="mut">${esc(c.parent)}</td><td>${c.proto}</td><td>${hostCell(c)}</td>
+    <td class="mono">${esc(c.remote)}</td><td>${esc(c.service)}</td><td class="s-${c.status}">${c.status}</td>
+    <td><span class="pill p-${c.scope}">${c.scope}</span></td><td>${repBadges(c.host, c.remote_ip)}</td><td class="mono mut">${esc(c.local)}</td><td class="mut">${age(c.age)}</td></tr>`).join('')
+    : '<tr><td colspan="12" class="empty">No connections match.</td></tr>';
+}
+function renderProcs() {
+  const by = {};
+  filtered().forEach(c => { (by[c.pid] ||= {c, list: []}).list.push(c); });
+  const groups = Object.values(by).sort((a,b) => b.list.length - a.list.length);
+  $('#pGrid').innerHTML = groups.length ? groups.map(({c, list}) => {
+    const hosts = [...new Set(list.map(x => (x.host || x.remote_ip || x.local) + (x.remote_port ? ':' + x.remote_port : '')))];
+    return `<div class="card" onclick="openProc(${c.pid})">
+      <h3><span class="r-${c.risk}">●</span>${esc(c.name)} <span class="mut mono" style="font-weight:400">PID ${c.pid}</span><span class="spacer"></span><span class="pill">${list.length} conn</span></h3>
+      <div class="mut mono" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.exe || '(path unavailable)')}</div>
+      <div class="chain"><span class="a">parent:</span><span class="n">${esc(c.parent || '—')}</span><span class="a">user:</span><span class="n">${esc(c.user || '?')}</span></div>
+      <div class="dests">${hosts.slice(0,6).map(esc).join('<br>')}${hosts.length > 6 ? `<br>+${hosts.length-6} more` : ''}</div></div>`;
+  }).join('') : '<div class="empty">No processes match.</div>';
+}
+function details(e) {
+  if (e.event === 'dns') return `<span class="mut">${esc(e.service)}</span> → <span class="${e.status === 'FAIL' ? 'fail' : ''}">${esc(e.detail)}</span>`;
+  if (['http','proc_start','proc_stop'].includes(e.event)) return esc(e.detail);
+  if (e.event === 'dll_load') return `<span class="r-${esc(e.detail)}">${esc(e.detail)}</span>`;
+  if (e.event === 'finding') return `<span class="sev sev-${esc(e.status)}">${esc(e.status)}</span> ${esc(e.detail.replace(/^\[\w+\] /, ''))}`;
+  return `<span class="mono">${esc(e.remote || e.local)}</span> ${esc(e.proto)} ${esc(e.service)}${e.duration != null ? ` <span class="mut">· ${e.duration}s</span>` : ''}${e.source === 'etw' ? '' : ' <span class="mut">· poll</span>'}`;
+}
+function eventRow(e) {
+  return `<tr class="click" onclick="openProc(${e.pid})"><td class="mono mut">${tm(e)}</td>
+    <td class="e-${e.event}"><b>${e.event}</b></td><td title="${esc(e.exe)}">${esc(e.process)}</td><td class="mono">${e.pid}</td>
+    <td class="mut">${esc(e.parent)}</td><td title="${esc(e.target)}">${esc(e.target || e.host || e.remote) || '<span class="mut">—</span>'}</td><td>${details(e)}</td></tr>`;
+}
+function renderEvents() {
+  const q = $('#q').value.trim().toLowerCase(), hl = $('#hideLoop').checked;
+  const rows = events.filter(e => kindOn.has(e.event) && !(hl && e.scope === 'loopback') && matchQ(e, q)).slice(-1500).reverse();
+  $('#tEvents').innerHTML = rows.length ? rows.map(eventRow).join('') : '<tr><td colspan="7" class="empty">No events yet.</td></tr>';
+}
+function webRow(e) {
+  let type, req, ans, info;
+  if (e.event === 'dns') { type = 'DNS'; req = e.target; ans = `<span class="${e.status === 'FAIL' ? 'fail' : ''}">${esc(e.detail)}</span>`; info = e.service; }
+  else if (e.event === 'http') { type = 'HTTP'; req = e.target; ans = esc(e.status || ''); info = e.detail; }
+  else if (e.event === 'udp') { type = 'UDP'; req = e.host || e.remote; ans = `<span class="mono">${esc(e.remote)}</span>`; info = e.service; }
+  else { type = 'TCP'; req = e.host || e.remote; ans = `<span class="mono">${esc(e.remote)}</span>`; info = (e.service || '') + (e.source !== 'etw' ? ' · poll' : ''); }
+  return `<tr class="click" onclick="openProc(${e.pid})"><td class="mono mut">${tm(e)}</td><td class="t-${type}"><b>${type}</b></td>
+    <td title="${esc(e.exe)}">${esc(e.process)}</td><td class="mono">${e.pid}</td><td class="mut">${esc(e.parent)}</td>
+    <td title="${esc(req)}">${esc(req) || '<span class="mut">—</span>'}</td><td>${ans}</td><td class="mut">${esc(info)}</td>
+    <td>${repBadges(e.host || (e.event === 'dns' ? e.target : ''), ipOf(e.remote))}</td></tr>`;
+}
+function renderWeb() {
+  const q = $('#q').value.trim().toLowerCase(), hl = $('#hideLoop').checked;
+  const rows = events.filter(e => WEB_KINDS.has(e.event) && !(hl && e.scope === 'loopback') && matchQ(e, q)).slice(-1500).reverse();
+  const hint = lastStatus && !lastStatus.etw.active ? 'ETW is off (run as Administrator) – only polled TCP connections are shown, no DNS/URL events.' : 'Waiting for traffic…';
+  $('#tWeb').innerHTML = rows.length ? rows.map(webRow).join('') : `<tr><td colspan="8" class="empty">${hint}</td></tr>`;
+}
+
+async function poll() {
+  if (!paused) {
+    try {
+      const [st, cs, ev] = await Promise.all([fetch('/api/status').then(r=>r.json()), fetch('/api/connections').then(r=>r.json()), fetch('/api/events?after='+lastEvent).then(r=>r.json())]);
+      lastStatus = st;
+      $('#sRemote').textContent = st.remote; $('#sProcs').textContent = st.processes;
+      $('#sDns').textContent = st.kinds.dns || 0; $('#sHttp').textContent = st.kinds.http || 0;
+      $('#admin').textContent = st.admin ? 'Administrator' : 'Not elevated'; $('#admin').className = 'badge ' + (st.admin ? 'ok' : 'bad');
+      const e = st.etw;
+      if (e.active) {
+        const lost = e.events_lost || 0;
+        $('#etwBadge').textContent = 'ETW live' + (lost ? ` · ${lost} lost` : '');
+        $('#etwBadge').className = 'badge ' + (lost || e.callback_errors ? 'warn' : 'ok');
+        $('#etwBadge').title = JSON.stringify(e.counts) + (e.last_error ? '\nlast error: ' + e.last_error : '');
+      } else { $('#etwBadge').textContent = 'ETW off – polling only'; $('#etwBadge').className = 'badge bad'; $('#etwBadge').title = e.error || ''; }
+      $('#logPath').textContent = 'Logging to ' + st.log_file;
+      const first = knownKeys.size === 0;
+      cs.forEach(c => { c._new = !first && !knownKeys.has(c.key); });
+      knownKeys = new Set(cs.map(c => c.key)); conns = cs;
+      if (ev.length) { events.push(...ev); lastEvent = ev[ev.length-1].id; if (events.length > 30000) events = events.slice(-30000); }
+      const now = Date.now()/1000;
+      $('#sRate').textContent = events.filter(x => (x.event === 'open' || x.event === 'udp') && now - x.ts < 60).length;
+      if (view === 'events') renderChips();
+      render(); slowRefresh();
+    } catch (err) { $('#admin').textContent = 'Backend offline'; $('#admin').className = 'badge bad'; }
+  }
+  setTimeout(poll, 1200);
+}
+
+/* ---------- process drawer ---------- */
+function closeDrawer() { $('#drawer').classList.remove('on'); curPid = null; }
+async function openProc(pid) {
+  curPid = pid; $('#drawer').classList.add('on');
+  $('#dBody').innerHTML = '<div class="empty">Loading…</div>';
+  const d = await fetch('/api/process/' + pid).then(r => r.json());
+  const i = d.info;
+  $('#dTitle').innerHTML = `${esc(i.name)} <span class="mut mono" style="font-size:13px">PID ${pid}</span>${i.alive === false ? ' <span class="badge bad">exited</span>' : ''}`;
+  $('#dRisk').textContent = i.risk; $('#dRisk').className = 'pill r-' + i.risk;
+  const anc = d.ancestry.slice().reverse();
+  const tree = anc.map((p, n) => `<div class="row ${p.pid === pid ? 'cur':''}">${'&nbsp;&nbsp;'.repeat(n)}${n ? '└─ ' : ''}<a onclick="openProc(${p.pid})">${esc(p.name)}</a> <span class="mut">(${p.pid})</span> <span class="mut r-${p.risk}" style="font-size:11px">${esc(p.exe)}</span></div>`).join('')
+    + d.children.map(c => `<div class="row">${'&nbsp;&nbsp;'.repeat(anc.length)}└─ <a onclick="openProc(${c.pid})">${esc(c.name)}</a> <span class="mut">(${c.pid}) child</span></div>`).join('');
+  const web = d.history.filter(e => WEB_KINDS.has(e.event));
+  const other = d.history.filter(e => !WEB_KINDS.has(e.event) && e.event !== 'dll_load');
+  $('#dBody').innerHTML = `
+    <div class="sec"><h4>Process</h4><div class="kv">
+      <div>Path</div><div class="mono r-${i.risk}">${esc(i.exe) || '<span class="mut">unavailable (run as admin)</span>'}</div>
+      <div>Command line</div><div class="mono">${esc(i.cmdline) || '—'}</div>
+      <div>User</div><div>${esc(i.user) || '—'}</div>
+      <div>Started</div><div>${esc(i.started) || '—'}${i.stopped ? ` · <span class="fail">stopped ${esc(i.stopped)} (exit ${esc(i.exit_code)})</span>` : ''}</div>
+      <div>Working dir</div><div class="mono">${esc(i.cwd) || '—'}</div>
+      <div>Threads / handles</div><div>${i.threads ?? '—'} / ${i.handles ?? '—'}</div>
+      <div>Memory</div><div>${i.memory_mb ?? '—'} MB</div>
+      <div>SHA-256</div><div class="mono" id="dHash"><button class="btn" onclick="loadHash(${pid})">Compute hash + check signature</button></div>
+    </div></div>
+    <div class="sec"><h4>Process tree (root → this → children)</h4><div class="tree">${tree}</div></div>
+    <div class="sec"><h4>Active sockets (${d.connections.length})</h4><table><thead><tr><th>Proto</th><th>Host</th><th>Remote</th><th>Service</th><th>State</th><th>Local</th></tr></thead><tbody>
+      ${d.connections.map(c => `<tr><td>${c.proto}</td><td>${esc(c.host) || '<span class="mut">—</span>'}${repBadges(c.host, ipOf(c.remote))}</td><td class="mono">${esc(c.remote)}</td><td>${esc(c.service)}</td><td class="s-${c.status}">${c.status}</td><td class="mono mut">${esc(c.local)}</td></tr>`).join('') || '<tr><td colspan="6" class="mut">none</td></tr>'}
+    </tbody></table></div>
+    <div class="sec"><h4>Web requests – DNS, URLs, connections (${web.length})</h4><div class="scroll"><table><tbody>
+      ${web.slice().reverse().map(webRow).join('') || '<tr><td class="mut">none recorded</td></tr>'}
+    </tbody></table></div></div>
+    ${other.length ? `<div class="sec"><h4>Other events (${other.length})</h4><div class="scroll"><table><tbody>${other.slice().reverse().map(eventRow).join('')}</tbody></table></div></div>` : ''}
+    <div class="sec"><h4>Loaded DLLs / modules <span id="modCount"></span><span class="spacer"></span>
+      <input type="search" id="modQ" placeholder="filter DLLs" style="width:180px">
+      <label class="chk"><input type="checkbox" id="modNonSys"> non-system only</label>
+      <button class="btn" id="sigBtn">Check signatures</button></h4>
+      <div id="mods"><div class="empty">Loading modules…</div></div></div>
+    <div class="sec"><h4>DLL load timeline – ETW (${d.dll_loads.length}) <span class="mut">loads seen live since NetWatch started, incl. DLLs that were later unloaded</span></h4>
+      <div class="scroll"><table><tbody>${d.dll_loads.slice().reverse().map(l => `<tr><td class="mono mut" style="width:110px">${esc(l.time.split('T')[1])}</td><td style="width:22%"><b>${esc(l.name)}</b></td><td class="mono mut" title="${esc(l.path)}">${esc(l.path)}</td><td class="r-${l.risk}" style="width:100px">${l.risk}</td></tr>`).join('')
+        || `<tr><td class="mut">${d.etw ? 'No loads recorded (process started before NetWatch, or loaded nothing new since).' : 'ETW is off – run as Administrator.'}</td></tr>`}</tbody></table></div></div>`;
+  $('#modQ').oninput = renderMods; $('#modNonSys').onchange = renderMods; $('#sigBtn').onclick = () => checkSigs(pid);
+  loadMods(pid);
+}
+async function loadHash(pid) {
+  $('#dHash').textContent = 'hashing…';
+  const h = await fetch(`/api/process/${pid}/hash`).then(r => r.json()).catch(() => null);
+  if (curPid !== pid) return;
+  $('#dHash').innerHTML = h ? `${esc(h.sha256)}<br><span class="${h.sig.status === 'Valid' ? 'r-system' : 'r-user-writable'}">${esc(h.sig.status)}</span> ${esc(h.sig.signer)}` : 'unavailable';
+}
+async function loadMods(pid) {
+  const r = await fetch(`/api/process/${pid}/modules`); const d = await r.json();
+  if (curPid !== pid) return;
+  if (d.error) { $('#mods').innerHTML = `<div class="empty">${esc(d.error)}</div>`; curModules = []; return; }
+  curModules = d.modules; renderMods();
+  // signatures are verified automatically in the background - refresh until all are in
+  if (curModules.some(m => !m.sig)) setTimeout(() => { if (curPid === pid) loadMods(pid); }, 4000);
+}
+function renderMods() {
+  const q = ($('#modQ')?.value || '').toLowerCase(), ns = $('#modNonSys')?.checked;
+  const rows = curModules.filter(m => (!ns || m.risk !== 'system') && (!q || m.path.toLowerCase().includes(q)));
+  const flagged = curModules.filter(m => m.risk !== 'system').length;
+  $('#modCount').innerHTML = `<span class="pill">${curModules.length} loaded · ${flagged} outside system dirs</span>`;
+  $('#mods').innerHTML = `<table><thead><tr><th>Module</th><th>Path</th><th>Location</th><th>Signature</th><th>Size</th><th>Modified</th></tr></thead><tbody>${rows.map(m => {
+    const s = m.sig; const sc = !s ? 'mut' : s.status === 'Valid' ? 'r-system' : s.status === 'NotSigned' ? 'r-user-writable' : 'r-other';
+    return `<tr><td><b>${esc(m.name)}</b></td><td class="mono mut" title="${esc(m.path)}">${esc(m.path)}</td><td class="r-${m.risk}">${m.risk}</td>
+      <td class="${sc}" title="${esc(s?.signer || '')}">${s ? esc(s.status) + (s.signer ? ' · ' + esc(s.signer) : '') : '—'}</td>
+      <td class="mut">${m.size != null ? (m.size/1024).toFixed(0)+' KB' : ''}</td><td class="mut">${esc(m.modified)}</td></tr>`; }).join('')}</tbody></table>`;
+}
+async function checkSigs(pid) {
+  const b = $('#sigBtn'); b.disabled = true; b.textContent = 'Checking ' + curModules.length + ' files…';
+  const res = await post('/api/signatures', {paths: curModules.map(m => m.path)}).catch(() => ({}));
+  if (curPid !== pid) return;
+  curModules.forEach(m => { if (res[m.path]) m.sig = res[m.path]; });
+  b.disabled = false; b.textContent = 'Check signatures'; renderMods();
+}
+
+/* ---------- saved logs ---------- */
+async function loadLogList() {
+  const files = await fetch('/api/logs').then(r => r.json());
+  $('#logList').innerHTML = files.map(f => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">
+    <a href="#" class="mono" style="color:var(--acc)" onclick="viewLog('${esc(f.name)}');return false">${esc(f.name)}</a>
+    <span class="mut">${(f.size/1024).toFixed(0)} KB</span><a class="btn" style="padding:2px 8px;text-decoration:none" href="/api/logs/${encodeURIComponent(f.name)}">⬇</a></div>`).join('') || '<div class="mut">No logs yet.</div>';
+}
+async function viewLog(name) {
+  const q = $('#q').value.trim();
+  const rows = await fetch(`/api/logs/${encodeURIComponent(name)}?view=1&q=${encodeURIComponent(q)}`).then(r => r.json());
+  $('#tLog').innerHTML = rows.slice().reverse().map(eventRow).join('') || '<tr><td colspan="7" class="empty">No matching entries.</td></tr>';
+}
+
+poll();
+</script>
+</body>
+</html>
