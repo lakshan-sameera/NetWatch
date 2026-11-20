@@ -148,7 +148,7 @@ a.vt{color:var(--acc);text-decoration:none} a.vt:hover{text-decoration:underline
 </head>
 <body>
 <header>
-  <div class="logo">Net<b>Watch</b></div>
+  <div class="logo">Net<b>Watch</b> <span id="ver" class="mut" style="font-size:11px;font-weight:400"></span></div>
   <div class="stats">
     <div class="stat"><div class="v" id="sRemote">–</div><div class="k">Remote conns</div></div>
     <div class="stat"><div class="v" id="sProcs">–</div><div class="k">Processes</div></div>
@@ -594,7 +594,8 @@ async function poll() {
         $('#etwBadge').className = 'badge ' + (lost || e.callback_errors ? 'warn' : 'ok');
         $('#etwBadge').title = JSON.stringify(e.counts) + (e.last_error ? '\nlast error: ' + e.last_error : '');
       } else { $('#etwBadge').textContent = 'ETW off – polling only'; $('#etwBadge').className = 'badge bad'; $('#etwBadge').title = e.error || ''; }
-      $('#logPath').textContent = 'Logging to ' + st.log_file;
+      $('#logPath').textContent = 'Data folder: ' + st.data_dir + '  ·  log: ' + st.log_file.split(/[\\/]/).pop();
+      $('#ver').textContent = 'v' + st.version;
       const first = knownKeys.size === 0;
       cs.forEach(c => { c._new = !first && !knownKeys.has(c.key); });
       knownKeys = new Set(cs.map(c => c.key)); conns = cs;

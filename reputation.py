@@ -168,22 +168,26 @@ class Reputation:
     def _saver(self):
         while True:
             time.sleep(20)
-            if not self.dirty:
-                continue
-            with self.lock:
-                if len(self.data) > 30000:   # keep the newest
-                    for k in sorted(self.data, key=lambda k: self.data[k].get("first", 0))[:5000]:
-                        del self.data[k]
-                snap = json.dumps(self.data)
-                self.dirty = False
-            try:
-                tmp = self.cache_path + ".tmp"
-                with open(tmp, "w", encoding="utf-8") as f:
-                    f.write(snap)
-                os.replace(tmp, self.cache_path)
-                self._save_cfg()
-            except Exception:
-                pass
+            self.flush()
+
+    def flush(self):
+        """Write cache + usage to disk now (also called on shutdown)."""
+        if not self.dirty:
+            return
+        with self.lock:
+            if len(self.data) > 30000:   # keep the newest
+                for k in sorted(self.data, key=lambda k: self.data[k].get("first", 0))[:5000]:
+                    del self.data[k]
+            snap = json.dumps(self.data)
+            self.dirty = False
+        try:
+            tmp = self.cache_path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(snap)
+            os.replace(tmp, self.cache_path)
+            self._save_cfg()
+        except Exception:
+            self.dirty = True     # try again next time
 
     # ---- settings ----
     def settings(self):

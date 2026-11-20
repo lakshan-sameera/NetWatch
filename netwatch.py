@@ -41,10 +41,29 @@ import netmap
 import reputation
 from flask import Flask, abort, jsonify, request, send_file, send_from_directory
 
+__version__ = "1.1.0"
+
 FROZEN = getattr(sys, "frozen", False)                       # running as NetWatch.exe (PyInstaller)
-# Bundled read-only resources (static UI) vs. the folder the user sees (logs live next to the exe)
+# Bundled read-only resources (static UI) vs. the folder the user sees (data lives next to the exe)
 RES = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-BASE = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
+APP_DIR = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
+
+
+def _writable(d):
+    try:
+        os.makedirs(d, exist_ok=True)
+        probe = os.path.join(d, ".netwatch-write-test")
+        with open(probe, "w") as f:
+            f.write("ok")
+        os.remove(probe)
+        return True
+    except OSError:
+        return False
+
+
+# Portable by default: data next to the exe. If that folder is read-only (e.g. Program Files),
+# fall back to %LOCALAPPDATA%\NetWatch so IP history, devices, hashes etc. are still kept.
+BASE = APP_DIR if _writable(APP_DIR) else os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "NetWatch")
 LOG_DIR = os.path.join(BASE, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -1182,7 +1201,7 @@ def api_status():
     return jsonify({"admin": is_admin(), "active": n, "remote": remote, "processes": procs,
                     "opened": _stats["opened"], "closed": _stats["closed"], "kinds": dict(_kind_counts),
                     "uptime": round(time.time() - _stats["started"]), "log_file": _log_path(),
-                    "hostname": socket.gethostname(), "etw": etw})
+                    "hostname": socket.gethostname(), "etw": etw, "version": __version__, "data_dir": BASE})
 
 
 @app.route("/api/connections")
@@ -1591,9 +1610,39 @@ def _port_free(port):
         return s.connect_ex((HOST, port)) != 0
 
 
+_saved_once = threading.Event()
+
+
+def save_all():
+    """Flush every persistent store to disk (IP history, devices, hashes, reputation)."""
+    if _saved_once.is_set():
+        return
+    _saved_once.set()
+    for name, fn in (("ip history", lambda: IPH and IPH._save()), ("devices", NETMAP.save),
+                     ("hash history", lambda: (setattr(HASH, "dirty", True), HASH.save())), ("reputation", REP.flush)):
+        try:
+            fn()
+        except Exception as e:
+            print(f"[!] could not save {name}: {e}", file=sys.stderr)
+    s = ETW.get("sensor")
+    if s:
+        try:
+            s.stop()
+        except Exception:
+            pass
+
+
+# Closing the console window / Ctrl+C / logoff / shutdown -> save first. Windows allows ~5 s.
+_HandlerRoutine = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_uint)
+_console_handler = _HandlerRoutine(lambda ctrl: (save_all(), 0)[1])
+
+
 def main():
     global PORT
     import webbrowser
+    atexit.register(save_all)
+    ctypes.windll.kernel32.SetConsoleCtrlHandler(_console_handler, True)
+    print(f"[+] NetWatch {__version__} - data folder: {BASE}")
     if FROZEN:
         os.system("title NetWatch - close this window to stop")
     if not _port_free(PORT):
