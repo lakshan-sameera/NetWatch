@@ -22,6 +22,23 @@ A local network-activity monitor for Windows. It shows which process is talking 
 - **Reputation:** optional AbuseIPDB and VirusTotal scores for public IPs, domains and the hashes of flagged files.
   - Keys are stored encrypted with Windows DPAPI.
   - Results are cached for 24 h, and lookups stay inside the free-tier limits.
+- **Request checker:** click 🔍 on any request or connection to capture its packets with Windows' built-in **pktmon**. You see:
+  - the TCP handshake, TLS ClientHello with SNI and ALPN, and the TLS version;
+  - plaintext HTTP and DNS;
+  - the decoded fields and a hex dump of each packet;
+  - a `.pcapng` download for Wireshark.
+
+  Works on Wi-Fi (native 802.11 frames) and Ethernet.
+- **Network map:** an interactive map: Internet → ISP hops (shows carrier-grade NAT) → router → this PC and its virtual adapters → devices.
+  - Devices are found by an ARP sweep (`SendARP`), the neighbour table, and passive listening to ARP, mDNS, SSDP, NetBIOS, LLMNR and DHCP.
+  - Optional IEEE vendor list, and checks of common ports (LAN addresses only).
+  - Windows Wi-Fi drivers can't do promiscuous mode, so the map uses what every device broadcasts.
+- **Public IP history:** your public IPv4/IPv6 every 5 min and on network changes, with the adapter or VPN in use and the AbuseIPDB score.
+  - Shown as a timeline whose gaps are when the PC was asleep or offline.
+  - Includes a "what was my IP at…?" lookup, useful for checking abuse reports.
+- **Hash changes:** a SHA-256 history of every executable and DLL seen.
+  - Files are re-hashed only when their size or date changes.
+  - Changes are rated by what happened to the signature (broken, lost, or a new signer is flagged).
 - **Logs:** everything is appended to a daily JSONL file in `logs/`.
 
 ## Run
@@ -48,12 +65,17 @@ This produces `dist\NetWatch.exe`: a single file that asks for admin rights on l
 | `netwatch.py` | Web server, polling sensor, findings, file inventory, API |
 | `etw_sensor.py` | Real-time ETW consumer (Kernel-Network, DNS-Client, WinINet/WinHTTP/WebIO, Kernel-Process) |
 | `reputation.py` | AbuseIPDB and VirusTotal lookups, cache, quotas, DPAPI key storage |
-| `static/index.html` | The whole UI |
+| `capture.py` | pktmon packet capture + pcapng reader + protocol decoders (802.11/Ethernet, IP, TCP/UDP, TLS, HTTP, DNS, DHCP, SSDP…) |
+| `netmap.py` | LAN discovery, DNS-only reverse lookups, traceroute, topology for the map |
+| `iphistory.py` | Public IP history |
+| `hashwatch.py` | File hash history and change rating |
+| `static/index.html`, `static/features.js` | The UI |
 
 ## Privacy
 
 - **NetWatch listens on `127.0.0.1` only.**
 - **Reputation lookups send only public IPs, public domain names and file hashes,** never file contents or private addresses. They're off until you add API keys.
-- **`logs/`, `netwatch-config.json` and `reputation.json` hold your own data** and are git-ignored.
+- **Your own data stays local and is git-ignored:** `logs/`, `captures/`, `netwatch-config.json`, `reputation.json`, `devices.json`, `hashes.json` and `iphistory.json`.
+- **Public IP history asks api.ipify.org** for your public address.
 
 Requires Windows 10/11 (64-bit) and Python 3.10+.

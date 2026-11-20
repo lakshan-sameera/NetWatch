@@ -227,12 +227,12 @@ a.vt{color:var(--acc);text-decoration:none} a.vt:hover{text-decoration:underline
     <table><thead><tr><th>Verdict</th><th>Type</th><th>Indicator</th><th>AbuseIPDB</th><th>VirusTotal</th><th>Owner / ISP</th><th>Country</th><th>Seen by</th><th>Open in</th><th>Checked</th></tr></thead><tbody id="tRep"></tbody></table>
   </section>
   <section class="view" id="v-web"><table><thead><tr>
-    <th>Time</th><th>Type</th><th>Process</th><th>PID</th><th>Parent</th><th>Request (domain / URL / host)</th><th>Answer / remote</th><th>Info</th><th>Reputation</th></tr></thead>
+    <th>Time</th><th>Type</th><th>Process</th><th>PID</th><th>Parent</th><th>Request (domain / URL / host)</th><th>Answer / remote</th><th>Info</th><th>Reputation</th><th title="Capture packets">Inspect</th></tr></thead>
     <tbody id="tWeb"></tbody></table></section>
   <section class="view" id="v-conns"><table><thead><tr>
     <th data-k="name">Process</th><th data-k="pid">PID</th><th data-k="parent">Parent</th><th data-k="proto">Proto</th>
     <th data-k="host">Host</th><th data-k="remote">Remote</th><th data-k="service">Service</th><th data-k="status">State</th>
-    <th data-k="scope">Scope</th><th>Reputation</th><th data-k="local">Local</th><th data-k="age">Age</th></tr></thead><tbody id="tConns"></tbody></table></section>
+    <th data-k="scope">Scope</th><th>Reputation</th><th data-k="local">Local</th><th data-k="age">Age</th><th>Inspect</th></tr></thead><tbody id="tConns"></tbody></table></section>
   <section class="view" id="v-procs"><div class="pgrid" id="pGrid"></div></section>
   <section class="view" id="v-events"><table><thead><tr>
     <th>Time</th><th>Event</th><th>Process</th><th>PID</th><th>Parent</th><th>Target</th><th>Details</th></tr></thead>
@@ -280,7 +280,7 @@ function goView(v) {
   document.querySelectorAll('.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + v));
   $('#chips').style.display = v === 'events' ? 'flex' : 'none';
   $('#scope').style.display = (v === 'conns' || v === 'procs') ? '' : 'none';
-  document.querySelector('.toolbar').style.display = v === 'dash' ? 'none' : '';
+  document.querySelector('.toolbar').style.display = ['dash', 'netmap', 'iphist', 'hashes'].includes(v) ? 'none' : '';
   if (v === 'logs') loadLogList();
   lastSlow = 0; render(); slowRefresh();
 }
@@ -315,6 +315,7 @@ async function slowRefresh() {
     else if (view === 'findings') renderFindings(await fetch('/api/findings').then(r => r.json()));
     else if (view === 'files') renderFiles(await fetch('/api/files?filter=' + $('#fFilter').value).then(r => r.json()));
     else if (view === 'rep') renderRep(await fetch('/api/reputation').then(r => r.json()));
+    else if (window.extraViews && extraViews[view]) await extraViews[view]();
     repMap = await fetch('/api/reputation/map').then(r => r.json());
     const bad = Object.values(repMap).filter(r => r.v === 'malicious' || r.v === 'suspicious').length;
     $('#nRep').style.display = bad ? '' : 'none'; $('#nRep').textContent = bad; $('#nRep').className = 'pill sev-high';
@@ -522,8 +523,8 @@ function renderConns() {
     <td class="r-${c.risk}" title="${esc(c.exe)}"><b>${esc(c.name)}</b></td><td class="mono">${c.pid}</td>
     <td class="mut">${esc(c.parent)}</td><td>${c.proto}</td><td>${hostCell(c)}</td>
     <td class="mono">${esc(c.remote)}</td><td>${esc(c.service)}</td><td class="s-${c.status}">${c.status}</td>
-    <td><span class="pill p-${c.scope}">${c.scope}</span></td><td>${repBadges(c.host, c.remote_ip)}</td><td class="mono mut">${esc(c.local)}</td><td class="mut">${age(c.age)}</td></tr>`).join('')
-    : '<tr><td colspan="12" class="empty">No connections match.</td></tr>';
+    <td><span class="pill p-${c.scope}">${c.scope}</span></td><td>${repBadges(c.host, c.remote_ip)}</td><td class="mono mut">${esc(c.local)}</td><td class="mut">${age(c.age)}</td><td>${c.remote ? inspectBtn(c.remote, c.host, c.name) : ''}</td></tr>`).join('')
+    : '<tr><td colspan="13" class="empty">No connections match.</td></tr>';
 }
 function renderProcs() {
   const by = {};
@@ -564,7 +565,12 @@ function webRow(e) {
   return `<tr class="click" onclick="openProc(${e.pid})"><td class="mono mut">${tm(e)}</td><td class="t-${type}"><b>${type}</b></td>
     <td title="${esc(e.exe)}">${esc(e.process)}</td><td class="mono">${e.pid}</td><td class="mut">${esc(e.parent)}</td>
     <td title="${esc(req)}">${esc(req) || '<span class="mut">—</span>'}</td><td>${ans}</td><td class="mut">${esc(info)}</td>
-    <td>${repBadges(e.host || (e.event === 'dns' ? e.target : ''), ipOf(e.remote))}</td></tr>`;
+    <td>${repBadges(e.host || (e.event === 'dns' ? e.target : ''), ipOf(e.remote))}</td>
+    <td>${inspectBtn(e.remote, e.host || (e.event === 'dns' ? e.target : ''), e.process)}</td></tr>`;
+}
+function inspectBtn(remote, host, proc) {
+  if (!remote && !host) return '';
+  return `<button class="ibtn" title="Capture packets for this request" data-r="${esc(remote || '')}" data-h="${esc(host || '')}" data-p="${esc(proc || '')}" onclick="event.stopPropagation();inspectFrom(this)">🔍</button>`;
 }
 function renderWeb() {
   const q = $('#q').value.trim().toLowerCase(), hl = $('#hideLoop').checked;
@@ -629,7 +635,7 @@ async function openProc(pid) {
     </div></div>
     <div class="sec"><h4>Process tree (root → this → children)</h4><div class="tree">${tree}</div></div>
     <div class="sec"><h4>Active sockets (${d.connections.length})</h4><table><thead><tr><th>Proto</th><th>Host</th><th>Remote</th><th>Service</th><th>State</th><th>Local</th></tr></thead><tbody>
-      ${d.connections.map(c => `<tr><td>${c.proto}</td><td>${esc(c.host) || '<span class="mut">—</span>'}${repBadges(c.host, ipOf(c.remote))}</td><td class="mono">${esc(c.remote)}</td><td>${esc(c.service)}</td><td class="s-${c.status}">${c.status}</td><td class="mono mut">${esc(c.local)}</td></tr>`).join('') || '<tr><td colspan="6" class="mut">none</td></tr>'}
+      ${d.connections.map(c => `<tr><td>${c.proto} ${c.remote ? inspectBtn(c.remote, c.host, i.name) : ''}</td><td>${esc(c.host) || '<span class="mut">—</span>'}${repBadges(c.host, ipOf(c.remote))}</td><td class="mono">${esc(c.remote)}</td><td>${esc(c.service)}</td><td class="s-${c.status}">${c.status}</td><td class="mono mut">${esc(c.local)}</td></tr>`).join('') || '<tr><td colspan="6" class="mut">none</td></tr>'}
     </tbody></table></div>
     <div class="sec"><h4>Web requests – DNS, URLs, connections (${web.length})</h4><div class="scroll"><table><tbody>
       ${web.slice().reverse().map(webRow).join('') || '<tr><td class="mut">none recorded</td></tr>'}
@@ -694,5 +700,6 @@ async function viewLog(name) {
 
 poll();
 </script>
+<script src="/static/features.js"></script>
 </body>
 </html>

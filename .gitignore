@@ -16,3 +16,11 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Network data gathered at runtime
+captures/
+devices.json
+hashes.json
+iphistory.json
+oui.txt
+*.tmp

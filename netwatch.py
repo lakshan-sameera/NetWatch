@@ -34,6 +34,10 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
 
 import psutil
+import capture
+import hashwatch
+import iphistory
+import netmap
 import reputation
 from flask import Flask, abort, jsonify, request, send_file, send_from_directory
 
@@ -242,10 +246,7 @@ def _refresh_dns_cache_loop():
 
 
 def _do_rdns(ip):
-    try:
-        name = socket.gethostbyaddr(ip)[0]
-    except Exception:
-        name = ""
+    name = netmap.ptr_lookup(ip)      # DNS only - gethostbyaddr() would also send NetBIOS queries to the IP
     with _dns_lock:
         _rdns[ip] = name
         _rdns_pending.discard(ip)
@@ -735,6 +736,10 @@ class SigWorker:
             _sig_cache[key] = sig
             self.pending.discard(key)
             self.done += 1
+            try:
+                HASH.known_sig(key, sig)
+            except NameError:      # hash watcher not created yet
+                pass
             with _files_lock:
                 rec = _files.get(key)
             if rec is not None:
@@ -751,6 +756,83 @@ class SigWorker:
 
 SIG = SigWorker()
 REP = reputation.Reputation(BASE)
+
+
+# --------------------------------------------------------------------------- #
+# Hash history, public-IP history, network map, packet capture
+# --------------------------------------------------------------------------- #
+def _hash_files():
+    with _files_lock:
+        return [(f["path"], sorted(f["procs"])) for f in _files.values()]
+
+
+def _hash_sig(path):
+    _sig_cache.pop(path.lower(), None)          # content changed -> verify again
+    sig = check_signatures([path], timeout=60)[path]
+    with _files_lock:
+        rec = _files.get(path.lower())
+        if rec:
+            rec["sig"], rec["sig_class"] = sig, sig_class(sig, path)
+    return sig
+
+
+def _on_hash_change(path, old, new, sev, why):
+    pinfo = {"name": os.path.basename(path), "exe": path, "ppid": None}
+    emit("hash_change", 0, {"target": path, "status": sev, "source": "hashwatch",
+                            "detail": f"{old['sha256'][:12]}… → {new['sha256'][:12]}… · {why}"}, pinfo=pinfo)
+    if sev != "info":
+        _finding(f"hash:{path.lower()}:{new['sha256'][:16]}", sev, "hash-change",
+                 f"File changed: {os.path.basename(path)}", f"{why} · {path}", None, "", path)
+
+
+def _on_ip_change(fam, old, new):
+    pinfo = {"name": "public IP", "exe": "", "ppid": None}
+    emit("ip_change", 0, {"target": new["ip"], "status": f"IPv{fam}", "source": "iphistory",
+                          "detail": f"{old['ip']} → {new['ip']} via {new.get('iface') or '?'}"
+                                    + (f" (VPN: {new['vpn']})" if new.get("vpn") else "")}, pinfo=pinfo)
+
+
+def _ip_lookup(ip):
+    REP.want(ip, "ip", prio=1, proc="public IP")
+    return {}
+
+
+def _on_new_device(d):
+    pinfo = {"name": "network", "exe": "", "ppid": None}
+    label = (d.get("names") or [""])[0] or (d.get("ips") or ["?"])[0]
+    emit("device_new", 0, {"target": label, "detail": f"{', '.join(d.get('ips', []))} · {d.get('mac', '')} {d.get('vendor', '')}",
+                           "source": "netmap"}, pinfo=pinfo)
+    _finding(f"newdev:{d.get('mac') or d.get('ips', [''])[0]}", "low", "network",
+             f"New device on your network: {label}", f"{', '.join(d.get('ips', []))} · MAC {d.get('mac', '?')} "
+             f"{d.get('vendor', '')}", None, "network", "")
+
+
+HASH = hashwatch.HashWatcher(BASE, _hash_files, _hash_sig, _on_hash_change)
+CAP = capture.CaptureManager(BASE)
+NETMAP = netmap.NetMap(BASE, PS_ENV, _on_new_device)
+CAP.listeners.append(lambda r: NETMAP.ingest_capture(r) if r.get("kind") == "discovery" and not r.get("error") else None)
+IPH = None   # created in main() so a plain import (tests, tools) doesn't start polling ipify
+
+
+def _hash_save_loop():
+    while True:
+        time.sleep(60)
+        try:
+            HASH.save()
+        except Exception:
+            pass
+
+
+def _netmap_loop():
+    time.sleep(8)
+    while True:
+        try:
+            NETMAP.sweep()
+            if time.time() - NETMAP.hops_at > 3600:
+                NETMAP.traceroute()
+        except Exception as e:
+            print("netmap error:", e, file=sys.stderr)
+        time.sleep(1800)
 
 
 def _rep_hook(ev):
@@ -1338,6 +1420,138 @@ def api_dashboard():
     })
 
 
+# ---- packet capture (request checker) ----
+_CAP_ID = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
+
+
+@app.route("/api/capture/start", methods=["POST"])
+def api_capture_start():
+    b = request.get_json(silent=True) or {}
+    seconds = max(3, min(int(b.get("seconds") or 20), 180))
+    remote = (b.get("remote") or "").strip()
+    ip, port = "", None
+    if remote:
+        ip, _, p = remote.rpartition(":")
+        ip = ip.strip("[]") or remote.strip("[]")
+        port = int(p) if p.isdigit() and ip != remote.strip("[]") else None
+    host = (b.get("host") or "").strip().lower()
+    extra = [x for x in (b.get("ips") or []) if isinstance(x, str)]
+    if not ip and host:                               # domain-only row: use IPs we saw for it ...
+        with _dns_lock:
+            extra += [i for (_p, i), n in _pid_dns.items() if n == host][:4]
+            extra += [i for i, names in _dns_map.items() if host in names][:4]
+        try:                                          # ... plus what it resolves to right now
+            extra += [ai[4][0] for ai in socket.getaddrinfo(host, None)][:6]
+        except OSError:
+            pass
+    flt = capture.filters_for_target(ip or None, port if b.get("port_only", True) else None, extra,
+                                     include_dns=bool(b.get("dns", True)))
+    if not flt:
+        return jsonify({"error": "Nothing to capture - no IP or domain given"})
+    label = host or remote or ", ".join(extra[:2])
+    return jsonify(CAP.start(flt, seconds, label, "request", [host] if host else None))
+
+
+@app.route("/api/capture/status")
+def api_capture_status():
+    return jsonify({**CAP.status(), "recent": [{"id": r["id"], "label": r["label"], "kind": r["kind"],
+                                                "packets": len(r.get("packets", [])), "error": r.get("error", "")}
+                                               for r in list(CAP.results.values())[::-1]]})
+
+
+@app.route("/api/capture/stop", methods=["POST"])
+def api_capture_stop():
+    CAP.stop()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/capture/result/<cid>")
+def api_capture_result(cid):
+    if not _CAP_ID.match(cid) or cid not in CAP.results:
+        abort(404)
+    return jsonify(CAP.results[cid])
+
+
+@app.route("/api/capture/pcap/<cid>")
+def api_capture_pcap(cid):
+    path = os.path.join(CAP.dir, cid + ".pcapng")
+    if not _CAP_ID.match(cid) or not os.path.exists(path):
+        abort(404)
+    return send_file(path, as_attachment=True, download_name=f"netwatch-{cid}.pcapng")
+
+
+# ---- hash history ----
+@app.route("/api/hashes")
+def api_hashes():
+    return jsonify({"summary": HASH.summary(), "changes": HASH.changes()})
+
+
+@app.route("/api/hashes/rescan", methods=["POST"])
+def api_hashes_rescan():
+    HASH.kick.set()
+    return jsonify({"ok": True})
+
+
+# ---- public IP history ----
+@app.route("/api/iphistory")
+def api_iphistory():
+    if IPH is None:
+        return jsonify({"periods": [], "current": {}, "error": "not started"})
+    v = IPH.view()
+    rmap = REP.compact_map()
+    for p in v["periods"]:
+        r = rmap.get(p["ip"])
+        if r:
+            p["abuse"], p["verdict"] = r.get("a"), r.get("v")
+    return jsonify(v)
+
+
+@app.route("/api/iphistory/check", methods=["POST"])
+def api_iphistory_check():
+    if IPH:
+        IPH.kick.set()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/iphistory/at")
+def api_iphistory_at():
+    ts = request.args.get("ts", type=float)
+    if IPH is None or not ts:
+        abort(400)
+    return jsonify(IPH.at(ts))
+
+
+# ---- network map ----
+@app.route("/api/netmap")
+def api_netmap():
+    pub = ""
+    if IPH:
+        pub = (IPH.view()["current"].get(4) or {}).get("ip", "")
+    return jsonify(NETMAP.topology(pub) | {"capture": CAP.status()})
+
+
+@app.route("/api/netmap/<action>", methods=["POST"])
+def api_netmap_action(action):
+    b = request.get_json(silent=True) or {}
+    if action == "sweep":
+        threading.Thread(target=NETMAP.sweep, daemon=True).start()
+    elif action == "trace":
+        threading.Thread(target=NETMAP.traceroute, daemon=True).start()
+    elif action == "oui":
+        threading.Thread(target=NETMAP.download_oui, daemon=True).start()
+    elif action == "listen":
+        seconds = max(10, min(int(b.get("seconds") or 45), 300))
+        return jsonify(CAP.start(netmap.DISCOVERY_FILTERS, seconds, "network discovery", "discovery"))
+    elif action == "ports":
+        try:
+            return jsonify({"open": NETMAP.check_ports(b.get("ip", ""))})
+        except ValueError as e:
+            return jsonify({"error": str(e)})
+    else:
+        abort(404)
+    return jsonify({"ok": True})
+
+
 def _load_history():
     """Reload today's log so the dashboard survives restarts."""
     global _event_id
@@ -1398,6 +1612,10 @@ def main():
     threading.Thread(target=_tracker_loop, daemon=True).start()
     threading.Thread(target=_findings_loop, daemon=True).start()
     threading.Thread(target=lambda: (time.sleep(4), scan_running()), daemon=True).start()
+    global IPH
+    IPH = iphistory.IPHistory(BASE, _on_ip_change, _ip_lookup, PS_ENV)
+    threading.Thread(target=_netmap_loop, daemon=True).start()
+    threading.Thread(target=_hash_save_loop, daemon=True).start()
     print(f"[+] NetWatch running at http://{HOST}:{PORT}  (logs: {LOG_DIR})")
     if FROZEN or "--open" in sys.argv:
         threading.Timer(1.5, lambda: webbrowser.open(f"http://{HOST}:{PORT}")).start()
